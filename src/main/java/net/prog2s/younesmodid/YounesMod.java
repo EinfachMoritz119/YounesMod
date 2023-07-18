@@ -2,6 +2,8 @@ package net.prog2s.younesmodid;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.renderer.ItemBlockRenderTypes;
+import net.minecraft.client.renderer.entity.EntityRenderers;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraftforge.common.MinecraftForge;
@@ -10,14 +12,19 @@ import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.InterModComms;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.fml.event.lifecycle.InterModEnqueueEvent;
 import net.minecraftforge.fml.event.lifecycle.InterModProcessEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.prog2s.younesmodid.block.ModBlocks;
+import net.prog2s.younesmodid.entity.ModEntityTypes;
+import net.prog2s.younesmodid.entity.client.YounesRenderer;
 import net.prog2s.younesmodid.item.ModItems;
 
 import org.slf4j.Logger;
+import software.bernie.geckolib3.GeckoLib;
+
 
 import java.util.stream.Collectors;
 
@@ -32,14 +39,27 @@ public class YounesMod
 
       IEventBus modEventBus =  FMLJavaModLoadingContext.get().getModEventBus();
         ModItems.register(modEventBus);
-        ModBlocks.register(modEventBus);
-        modEventBus.addListener(this::commonSetup);
 
+        ModBlocks.register(modEventBus);
+
+        ModEntityTypes.register(modEventBus);
+
+
+
+        modEventBus.addListener(this::commonSetup);
         modEventBus.addListener(this::processIMC);
+    modEventBus.addListener((this::clientSetup));
+        GeckoLib.initialize();
 
         MinecraftForge.EVENT_BUS.register(this);
+
     }
 
+
+
+    private  void clientSetup(final FMLClientSetupEvent event){
+        EntityRenderers.register(ModEntityTypes.YOUNES.get(), YounesRenderer::new);
+    }
     private void setup(final FMLCommonSetupEvent event) {
         // some preinit code
         LOGGER.info("HELLO FROM PREINIT");
