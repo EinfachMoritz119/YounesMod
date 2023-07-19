@@ -1,4 +1,9 @@
 package net.prog2s.younesmodid.entity.custom;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.syncher.EntityDataAccessor;
+import net.minecraft.network.syncher.EntityDataSerializers;
+import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.server.players.OldUsersConverter;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.InteractionHand;
@@ -15,7 +20,6 @@ import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.level.Level;
 import net.prog2s.younesmodid.item.ModItems;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 import software.bernie.geckolib3.core.IAnimatable;
 
 import software.bernie.geckolib3.core.PlayState;
@@ -27,17 +31,22 @@ import software.bernie.geckolib3.core.event.predicate.AnimationEvent;
 import software.bernie.geckolib3.core.manager.*;
 import software.bernie.geckolib3.util.GeckoLibUtil;
 
-
+import javax.annotation.Nullable;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.UUID;
 
 
 public class YounesEntity extends PathfinderMob implements IAnimatable {
     private final ItemStack heldItem = new ItemStack(ModItems.PHONE.get());
+    protected static final EntityDataAccessor<Byte> FLAGS_ID = SynchedEntityData.defineId(YounesEntity.class, EntityDataSerializers.BYTE);
+    private static final EntityDataAccessor<Boolean> TAMED = SynchedEntityData.defineId(YounesEntity.class, EntityDataSerializers.BOOLEAN);
 
+   private static final EntityDataAccessor<Optional<UUID>> OWNER_UUID = SynchedEntityData.defineId(YounesEntity.class, EntityDataSerializers.OPTIONAL_UUID);
 
-    private Player owner;
     private static final ItemStack tamingItem = new ItemStack(ModItems.PHONE.get());
 
-    private boolean tamed = false;
+
     private static final ILoopType loop =ILoopType.EDefaultLoopTypes.LOOP;
     private  boolean attacks = false;
     private final AnimationFactory factory = GeckoLibUtil.createFactory(this);
@@ -54,6 +63,38 @@ public class YounesEntity extends PathfinderMob implements IAnimatable {
                 .add(Attributes.ATTACK_SPEED, 0.3f).build();
     }
 
+    @Override
+    protected void defineSynchedData() {
+        this.entityData.define(TAMED, false);
+        this.entityData.define(OWNER_UUID,Optional.empty());
+        this.entityData.define(FLAGS_ID, (byte)0);
+        super.defineSynchedData();
+    }
+
+    public void addAdditionalSaveData(CompoundTag compoundTag) {
+        super.addAdditionalSaveData(compoundTag);
+        if (this.getOwnerUUID() != null) {
+            compoundTag.putUUID("Owner", this.getOwnerUUID());
+        }}
+    public void readAdditionalSaveData(CompoundTag compoundTag) {
+        super.readAdditionalSaveData(compoundTag);
+        UUID uuid;
+        if (compoundTag.hasUUID("Owner")) {
+            uuid = compoundTag.getUUID("Owner");
+        } else {
+            String s = compoundTag.getString("Owner");
+            uuid = OldUsersConverter.convertMobOwnerIfNecessary(this.getServer(), s);
+        }
+        if (uuid != null) {
+            try {
+                this.setOwnerUUID(uuid);
+                this.setTamed(true);
+            } catch (Throwable throwable) {
+                this.setTamed(false);
+            }
+        }
+
+    }
 
     protected void registerGoals(){
         this.goalSelector.addGoal(1, new FloatGoal(this));
@@ -80,6 +121,7 @@ public class YounesEntity extends PathfinderMob implements IAnimatable {
         event.getController().setAnimation(new AnimationBuilder().addAnimation("animation.model.idle", loop));
         return PlayState.CONTINUE;
     }
+
     @Override
     public void registerControllers(AnimationData data) {
     data.addAnimationController(new AnimationController(this, "controller",
@@ -87,13 +129,12 @@ public class YounesEntity extends PathfinderMob implements IAnimatable {
     }
 
 
-
     @Override
     public @NotNull InteractionResult mobInteract(Player player, @NotNull InteractionHand hand) {
         ItemStack itemStack = player.getItemInHand(hand);
         if(itemStack.getItem() == tamingItem.getItem() && !this.isTamed()) {
-            setTamed();
-            this.setOwner(player);
+            setTamed(true);
+            this.setOwnerUUID(player.getUUID());
             this.setItemSlot(EquipmentSlot.MAINHAND, heldItem);
 
             if(!player.isCreative()) {
@@ -106,23 +147,27 @@ public class YounesEntity extends PathfinderMob implements IAnimatable {
 
         return super.mobInteract(player, hand);
     }
-
-    private void setTamed() {
-    this.tamed = true;
+    private void setTamed(boolean tamed) {
+        byte b0 = this.entityData.get(FLAGS_ID);
+        if (tamed) {
+            this.entityData.set(FLAGS_ID, (byte)(b0 | 4));
+        } else {
+            this.entityData.set(FLAGS_ID, (byte)(b0 & -5));
+        }
     }
     private boolean isTamed() {
-        return tamed;
+        return (this.entityData.get(FLAGS_ID) & 4) != 0;
     }
 
-    public void setOwner(Player owner) {
-        this.owner = owner;
+    public void setOwnerUUID(@Nullable UUID p_21817_) {
+        this.entityData.set(OWNER_UUID, Optional.ofNullable(p_21817_));
     }
 public  void setAttacks(boolean bool){
         attacks = bool;
 }
     @Nullable
-    public Player getOwner() {
-        return this.owner;
+    public UUID getOwnerUUID() {
+        return this.entityData.get(OWNER_UUID).orElse((UUID)null);
     }
 
     @Override
@@ -135,10 +180,11 @@ public  void setAttacks(boolean bool){
         super.tick();
 
 
-        if(this.isTamed() && this.getOwner() != null){
-            double distanceSq = this.distanceToSqr(this.owner);
+        if(this.isTamed() && this.getOwnerUUID() != null){
+            Player owner = this.level.getPlayerByUUID(this.getOwnerUUID());
+            double distanceSq = this.distanceToSqr(owner);
             if(distanceSq >16.0){
-                this.getNavigation().moveTo(this.owner,1.0);
+                this.getNavigation().moveTo(owner,1.0);
             }
         }
     }
